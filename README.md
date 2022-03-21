@@ -1,13 +1,12 @@
-## Remote sensing of biodiversity indicators in temperate forests using DL
+## Predicting Species and Structural Diversity of Temperate Forests with Satellite Remote Sensing and Deep Learning
 
 
-Repository including codes and datasets used for Remote Sensing Paper and Bachelor Thesis of Janik Hoffmann on "Predicting Species and Structural Diversity of Temperate Forests with Satellite Remote Sensing and Deep Learning". 
-Satellite data analysis has been conducted with Google Earth Engine using the Python API [GeeMap](https://geemap.org/). 
+This repository provides the codes and datasets used for the paper submission to the Remote Sensing Journal and for the Bachelor Thesis of Janik Hoffmann on "Predicting Species and Structural Diversity of Temperate Forests with Satellite Remote Sensing and Deep Learning". 
 
 ### Project description
 
 Based on forest inventory data from the [Biodiversity Exploratories](https://www.biodiversity-exploratories.de/en/) we built spatial models of biodiversity indicators (tree species diversity and the standard deviation of tree diameter) using Deep Neural Networks and Sentinel-1 and -2 image metrics.
-Our work contributes to current research by testing a novel modeling approach for the regression analysis of in-situ forest biodiversity and satellite observations based on a heterogeneous dataset covering different environmental and forest management conditions.
+Our work contributes to current research by testing a novel approach for the regression analysis of in-situ forest biodiversity and satellite observations based on a heterogeneous dataset covering different environmental and forest management conditions throughout Germany.
 
 ---
 
