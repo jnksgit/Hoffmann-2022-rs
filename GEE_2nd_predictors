@@ -1,0 +1,276 @@
+// Javascript code for computing the following data in Google Earth Engine: 
+// Enhanced Vegetation Index (EVI), Sentinel-1 Normalized Difference Index, Sentinel-2 and -1 texture metrics, SRTM topographic data
+
+// Parameters for filtering of Sentinel-2 image collection
+var explo = 'SCH'
+var year = '2017'
+var START_DATE = ee.Date(year+'-03-01');
+var END_DATE = ee.Date(year+'-10-01');
+var region = Plots.filter(ee.Filter.eq('Explrtr', explo)).geometry().bounds();
+Map.addLayer(region)
+Map.addLayer(Plots)
+
+// Cloud mask section same as in Colab script, needed to run here again to process the predictors
+//Cloud mask parameters
+
+var CLOUD_FILTER = 60;
+var CLD_PRB_THRESH = 50;
+var NIR_DRK_THRESH = 0.15;
+var CLD_PRJ_DIST = 2;
+var BUFFER = 100;
+
+function maskEdges(s2_img) {
+  return s2_img.updateMask(
+      s2_img.select('B8A').mask().updateMask(s2_img.select('B9').mask()));
+}
+
+function get_s2_sr_cld_col(aoi, start_date, end_date) {
+  var s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR')
+        .filterBounds(aoi)
+        .filterDate(start_date, end_date)
+        .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', CLOUD_FILTER)))
+        .map(maskEdges)
+  var s2_cloudless_col = (ee.ImageCollection('COPERNICUS/S2_CLOUD_PROBABILITY')
+        .filterBounds(aoi)
+        .filterDate(start_date, end_date))
+  return ee.ImageCollection(ee.Join.saveFirst('s2cloudless').apply({
+        'primary': s2_sr_col,
+        'secondary': s2_cloudless_col,
+        'condition': ee.Filter.equals({
+            'leftField': 'system:index',
+            'rightField': 'system:index'
+        })
+    }))
+}
+
+var s2_sr_cld_col = get_s2_sr_cld_col(region, START_DATE, END_DATE)
+
+function add_cloud_bands(img) {
+  var  cld_prb = ee.Image(img.get('s2cloudless')).select('probability')
+  var  is_cloud = cld_prb.gt(CLD_PRB_THRESH).rename('clouds')
+  return img.addBands(ee.Image([cld_prb, is_cloud]))
+}
+
+function add_shadow_bands(img) {
+  var not_water = img.select('SCL').neq(6)
+  var SR_BAND_SCALE = 1e4
+  var dark_pixels = img.select('B8').lt(NIR_DRK_THRESH*SR_BAND_SCALE).multiply(not_water).rename('dark_pixels')
+  var shadow_azimuth = ee.Number(90).subtract(ee.Number(img.get('MEAN_SOLAR_AZIMUTH_ANGLE')));
+  var cld_proj = (img.select('clouds').directionalDistanceTransform(shadow_azimuth, CLD_PRJ_DIST*10)
+        .reproject({'crs': img.select(0).projection(), 'scale': 100})
+        .select('distance')
+        .mask()
+        .rename('cloud_transform'))
+  var shadows = cld_proj.multiply(dark_pixels).rename('shadows')
+  return img.addBands(ee.Image([dark_pixels, cld_proj, shadows]))
+}
+
+function add_cld_shdw_mask(img) {
+  var img_cloud = add_cloud_bands(img)
+  var img_cloud_shadow = add_shadow_bands(img_cloud)
+  var is_cld_shdw = img_cloud_shadow.select('clouds').add(img_cloud_shadow.select('shadows')).gt(0)
+  var is_cld_shdw = (is_cld_shdw.focal_min(2).focal_max(BUFFER*2/20)
+        .reproject({'crs': img.select([0]).projection(), 'scale': 20})
+        .rename('cloudmask'))
+  return img_cloud_shadow.addBands(is_cld_shdw)
+}
+
+function apply_cld_shdw_mask(img) {
+  var  not_cld_shdw = img.select('cloudmask').not()
+  return img.select('B.*').updateMask(not_cld_shdw)
+}
+
+print(s2_sr_cld_col)
+
+var s2CloudMasked = (s2_sr_cld_col.map(add_cld_shdw_mask)
+                                  .map(apply_cld_shdw_mask))
+
+var S2_testimage = s2CloudMasked.median()
+var rgbVis = {min: 0, max: 3000, bands: ['B4', 'B3', 'B2']};
+
+var radius = 6
+var square = ee.Kernel.square(radius)
+var image_16int = S2_testimage.toUint16()
+var entropy_image = image_16int.entropy(square)
+var entropy_clip = entropy_image.clip(geometry)
+//print(entropy_clip)
+//Map.addLayer(entropy_clip)
+
+
+/*Export.image.toDrive({
+  image: entropy_clip.select(['B8']).float(),
+  description: 'S2_B8_entr',
+  fileNamePrefix: 'S2_B8_entr', 
+  folder: 'bands',
+  region: geometry,
+  scale: 10,
+  crs: 'EPSG:32632',
+  maxPixels: 6000000000,
+
+  })*/
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////Calculation of EVI and EVI texture////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+var EVI_S2 = image_16int.expression(
+  "2.5 * (B08 - B04) / ((B08 + 6.0 * B04 - 7.5 * B02) + 10000)",{
+    "B08" : image_16int.select("B8"),
+    "B04" : image_16int.select("B4"),
+    "B02" : image_16int.select("B2")
+    
+  });
+
+// Further process the EVI (clipping, rescaling what is neccessary for further texture computation)
+
+var EVI = EVI_S2.clip(region)
+var EVI_rescale = EVI.multiply(100)
+var EVI_glcm = EVI_rescale.toUint16()
+//Map.addLayer(EVI_glcm, {min: 0, max: 100},"EVI")
+
+// Calculation of Grey-Level-Co-Occurrence-Matrix for Haralick texture features based on EVI
+var glcm = EVI_glcm.glcmTexture().clip(region)
+print("glcm:", glcm)
+// glcm will give all Haralick texture features
+// csv. file with all featuers is extracted via Zonal Statistics and only entropy, dissimilarity, contrast and homogeneity features are manually
+// added to "model_parameters.csv" 
+
+var ZonalStats = glcm.reduceRegions({
+    collection: Plots.filter(ee.Filter.eq('Explrtr', explo)).select(['EP']), 
+    reducer: ee.Reducer.median(), 
+    scale: 10
+  })
+
+Export.table.toDrive({
+    collection: ZonalStats,
+    description: 'glcm',
+    fileNamePrefix: 'glcm', 
+    folder: 'SEBAS',
+    fileFormat: 'CSV'
+})
+
+// Map.addLayer(glcm)
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////Calculation of Sentinel-1 texture/////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Sentinel-1 image collection for Normalized Difference Index of VH and VV backscatter parameters and texture metrics
+
+var collection_VH = ee.ImageCollection("COPERNICUS/S1_GRD").filter(ee.Filter.eq('instrumentMode', 'IW'))
+                                                           .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'))
+                                                           .filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING'))
+                                                           .filterBounds(region).filterDate('2017-12-01', '2018-02-28')
+                                                           .select(['VH'])
+
+var S1_VH = collection_VH.median()
+var S1_VH_expl = S1_VH.clip(region)
+
+Export.image.toDrive({
+  image: S1_VH_expl.float(),
+  description: 'S1_VH_sch',
+  fileNamePrefix: 'S1_VH_sch', 
+  folder: 'bands',
+  region: geometry,
+  scale: 10,
+  crs: 'EPSG:32632',
+  maxPixels: 6000000000,
+
+  })
+  
+var collection_VV = ee.ImageCollection("COPERNICUS/S1_GRD").filter(ee.Filter.eq('instrumentMode', 'IW'))
+                                                           .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
+                                                           .filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING'))
+                                                           .filterBounds(region).filterDate('2017-12-01', '2018-02-28')
+                                                           .select(['VV'])
+
+var S1_VV = collection_VV.median()
+var S1_VV_expl = S1_VV.clip(geometry)
+
+
+Export.image.toDrive({
+  image: S1_VV_expl.float(),
+  description: 'S1_VV_sch',
+  fileNamePrefix: 'S1_VV_sch', 
+  folder: 'bands',
+  region: geometry,
+  scale: 10,
+  crs: 'EPSG:32632',
+  maxPixels: 6000000000,
+
+  })
+  
+// Computing Normalized Difference of Sentinel-1 VV and VH
+
+var S1_ndi = S1_VH_expl.subtract(S1_VV_expl).divide(S1_VH_expl.add(S1_VV_expl))
+print(S1_ndi)
+//Map.addLayer(S1_ndi)
+var S1_rescale = S1_ndi.multiply(100)
+
+// Calculation of Grey-Level-Co-Occurrence-Matrix for Haralick texture features based on Sentinel-1 Normalized Difference 
+
+var S1_glcm = S1_rescale.toUint16()
+Map.addLayer(S1_glcm, {min: 0, max: 100},"NDI")
+
+var glcm = S1_glcm.glcmTexture().clip(geometry)
+print("glcm:", glcm)
+//Map.addLayer(glcm)
+
+// glcm will give all Haralick texture features
+// csv. file with all featuers is extracted via Zonal Statistics and only entropy, dissimilarity, contrast and homogeneity features are manually
+// added to "model_parameters.csv" 
+
+var ZonalStats = glcm.reduceRegions({
+    collection: Plots.filter(ee.Filter.eq('Explrtr', explo)).select(['EP']), 
+    reducer: ee.Reducer.median(), 
+    scale: 10
+  })
+
+Export.table.toDrive({
+    collection: ZonalStats,
+    description: 'glcm',
+    fileNamePrefix: 'glcm', 
+    folder: 'SEBAS',
+    fileFormat: 'CSV'
+})
+
+// Export image data of predictor "Sentinel-1 entropy" for modelling DBH_sd on raster data 
+// Select entropy from glcm and export it to drive
+
+var S1_entropy = glcm.select("VH_ent")
+print (S1_entropy)
+
+Export.image.toDrive({
+  image: S1_entropy,
+  description: 'S1_entropy_sch',
+  fileNamePrefix: 'S1_entropy_sch', 
+  folder: 'bands',
+  region: geometry,
+  scale: 10,
+  crs: 'EPSG:32632',
+  maxPixels: 6000000000,
+
+  })
+
+// Download topographic data for Figure 10 (thesis)
+
+var dataset = ee.Image('CGIAR/SRTM90_V4');
+var elevation = dataset.select('elevation');
+var slope = ee.Terrain.slope(elevation);
+var aspect = ee.Terrain.aspect(elevation);
+var slope_alb = slope.clip(region)
+var aspect_alb = aspect.clip(region)
+
+//Map.addLayer(slope_alb, {min: 0, max: 60}, 'slope');
+
+Export.image.toDrive({
+  image: slope_alb,
+  description: 'slope_alb',
+  fileNamePrefix: 'slope_alb', 
+  folder: 'bands',
+  region: geometry,
+  scale: 90,
+  crs: 'EPSG:32632',
+  maxPixels: 6000000000,
+
+  })
