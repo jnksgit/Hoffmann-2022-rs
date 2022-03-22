@@ -64,7 +64,7 @@ For all 150 plot areas band statistics have been extracted and stored in a csv. 
 
 Radar data has been obtained from the collection of [C-Band Sentinel-1 SAR GRD](https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S1_GRD) in Google Earth Engine.
 We computed different backscatter image products for the whole year 2017 and the winter season respectively.
-aWe extracted band statistics for the location of the plots and stored it in a csv. file.
+aWe extracted band statistics for the location of the plots and stored it in a csv.file.
 
 ### (4) Computation of further image metrics
 
@@ -73,7 +73,7 @@ In total, a number of 31 predictors have been used for modeling.
 
 #### (4.1) Enhanced Vegetation Index (EVI)
 
-We wanted to check the predictive power of the EVI computed based on Sentinel-2 image data in Google Earth Engine. The code can be accessed via the **imetrics.ipynb** file.
+We wanted to check the predictive power of the EVI computed based on Sentinel-2 image data in Google Earth Engine.
 
 #### (4.2) Rao's Q Diversity Index (Q)
 
@@ -88,9 +88,7 @@ calculated in Google Earth Engine using the [GLCM function](https://developers.g
 ### (5) Setup of the DNN
 
 For modeling the biodiversity variables, we used a feed-forward-deep-neural network implemented via Keras sequential model in Python. 
-As predictors Sentinel-1 and -2 composites, as well as further computed metrics have been used.
-A more detailed description of the modeling process can be script can be abstracted with the **dnn.ipynb** file. 
-The predictors have been divided into different groups: Sentinel-2 bands+EVI+Q, Sentinel-1 backscatter, Sentinel-2 texture and Sentinel-1 texture.
+As predictors Sentinel-1 and -2 composites, as well as further computed metrics have been used. The predictors have been divided into different groups: Sentinel-2 bands+EVI+Q, Sentinel-1 backscatter, Sentinel-2 texture and Sentinel-1 texture.
 
 ### (6) Model validation
 
@@ -101,13 +99,12 @@ Furthermore, the variable importance has been calculated for each predictor base
 ### (7) Test for spatial autocorrelation
 
 Spatial autocorrelation is a common phenomena when it comes to spatial models with remote sensing and indicates spatial dependence between model training and validation data.
-We accounted for this problem by calculating the Moran's I index in R. The script can be accessed with the file **moransI.ipynb**.
+We accounted for this problem by calculating the Moran's I index in R.
 
 ### (8) Applying the model to raster data
 
 We applied the calibrated model of structural diversity to raster data to assess the performance of the model outside the test areas.
 We then recorded patterns for patches of known forest type to assess the model's capability to generalize across different species and forest management regimes.
-This step has been conducted in Python, the script can be viewed via the **spatmod.ipynb** file.
 
 ---
 
