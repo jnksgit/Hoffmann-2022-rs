@@ -10,24 +10,6 @@ Our work contributes to current research by testing a novel approach for the reg
 
 ---
 
-#### Where to find what
-
-* Data forest: forest_data.csv
-* Data forest composition: composition.csv
-* Data Sentinel-2: sentinel2.csv
-* Data Sentinel-1: sentinel1.csv
-* Data image texture: itexture.csv
-* Data all model parameters: model_parameters.csv
-* Code EcoPy: ecopy.ipynb
-* Code preprocessing: preprocessing.ipynb
-* Code image metrics: imetrics.ipynb
-* Code DNN: dnn.ipynb
-* Code Moran's I: moransI.ipynb
-* Code Spatial model: spatmod.ipynb
-
----
-
-
 ### Workflow
 
 1. Gathering of field data on selected forest variables and calculation of Shannon's Diversity Index from forest composition dataset
